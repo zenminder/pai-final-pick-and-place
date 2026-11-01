@@ -47,6 +47,7 @@ export OPENAI_API_KEY=...   # LLM/VLM を使う場合のみ。リポジトリに
 .venv/bin/python eval_grasp.py --trials 30 --seed 0                                          # 評価1: 把持再現性（APIキー不要、動画なし）→ out/eval_grasp.json
 .venv/bin/python run_demo.py                                  # 評価2・3: 既定の2シナリオ（OpenAI GPTで計画生成＋画像検査）→ out/demo.mp4, out/demo_log.json
 .venv/bin/python run_demo.py --offline                        # APIなし: キーワード規則プランナーで同じパイプラインを実行
+.venv/bin/python run_demo.py --replay out/demo_log.json       # 保存済みログの計画・判定を使って動画だけ再生成（APIなし）
 .venv/bin/python run_demo.py --instruction "青いキューブを白いパッドへ"   # 任意の指示（複数指定可）
 .venv/bin/python pick_place.py --plan "red:pad_A,green:pad_B,blue:pad_A" --video out/test.mp4   # 計画を直接与えて実行
 .venv/bin/python make_report.py --video-url <YouTube URL> --repo-url <GitHub URL>              # レポートPDFを生成 → out/説明資料_PAI最終課題_zenminder.pdf

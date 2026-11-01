@@ -1,8 +1,9 @@
 """End-to-end demo: Japanese instruction -> LLM plan -> Panda executes -> VLM verifies -> annotated MP4.
 
-    python run_demo.py                      # 2 default scenarios, OpenAI GPT planner + verifier
+    python run_demo.py                      # 2 default scenarios, LLM planner + VLM verifier (OpenAI API)
     python run_demo.py --offline            # keyword planner, no API access needed
     python run_demo.py --instruction "..."  # your own instruction(s), repeatable
+    python run_demo.py --replay out/demo_log.json   # re-render the video from a saved log, no API calls
 
 The video is rendered at real time (1x); no speed-up is applied.
 """
@@ -87,7 +88,7 @@ class Overlay:
         # right: plan
         px, py = W - 420, 24 + 38 * len(lines) + 16
         panel(d, (px - 16, py - 10, W - 16, py + 40 + 34 * len(self.steps)))
-        d.text((px, py), f"LLMの計画 ({self.planner_label})", font=self.f_small, fill=(180, 220, 255, 255))
+        d.text((px, py), f"作業計画（{self.planner_label}）", font=self.f_small, fill=(180, 220, 255, 255))
         for i, (cube, pad) in enumerate(self.steps):
             mark = "完了" if i in self.done else ("実行中" if i == self.current else "待機")
             color = (120, 255, 140, 255) if i in self.done else (
@@ -129,22 +130,28 @@ def scene_description(sim: PandaSim):
     return objects, pads
 
 
-def run_scenario(idx: int, instruction: str, writer, offline: bool, speed: float, out_dir: pathlib.Path) -> dict:
+def run_scenario(idx: int, instruction: str, writer, offline: bool, speed: float, out_dir: pathlib.Path,
+                 saved: dict | None = None) -> dict:
+    """One scenario. `saved` (an entry of a previous demo_log.json) replays its plan/verification without API calls."""
     sim = PandaSim(camera="overview", speed=speed)
     objects, pads = scene_description(sim)
 
-    t0 = time.time()
-    plan = (ai_planner.rule_based_plan if offline else ai_planner.plan)(instruction, objects, pads)
-    plan_sec = time.time() - t0
+    if saved is not None:
+        plan, plan_sec = saved["plan"], float(saved.get("plan_seconds", 0.0))
+        offline = plan.get("source") == "rule"
+    else:
+        t0 = time.time()
+        plan = (ai_planner.rule_based_plan if offline else ai_planner.plan)(instruction, objects, pads)
+        plan_sec = time.time() - t0
     steps = [(CUBE_BY_BODY[s["pick"]], s["place"]) for s in plan["steps"]]
-    label = "offline" if offline else ai_planner.MODEL
+    label = "規則ベース" if offline else "LLM"
     print(f"[scenario {idx}] plan ({label}, {plan_sec:.1f}s): {steps}\n  reasoning: {plan['reasoning']}")
 
     card(writer, f"シナリオ {idx}: 「{instruction}」",
-         [f"プランナー: {label}（推論のみ）",
-          "シーン情報（物体名・色・座標）と指示文をLLMに渡し、ピック＆プレース手順をJSONで生成。",
+         [f"計画生成: {label}（推論のみ・学習なし）。シーン情報（物体名・色・座標）と指示文から手順をJSONで生成。",
           "計画: " + " / ".join(f"{c} → {p}({PAD_COLORS[p]})" for c, p in steps),
-          f"LLMの理由: {plan['reasoning']}"], 7)
+          f"計画の理由: {plan['reasoning']}",
+          "完了後は、座標による定量判定と、カメラ画像のみを見る視覚検査（VLM）の2経路で合否を判定します。"], 7)
 
     overlay = Overlay(idx, instruction, steps, label)
     sim.overlay = overlay
@@ -165,6 +172,8 @@ def run_scenario(idx: int, instruction: str, writer, offline: bool, speed: float
     sim_ok = bool(results) and all(r["success"] for r in results)
     if not results:
         verification = {"success": False, "observation": "計画が空のため実行なし（プランナーが指示を解釈できず）"}
+    elif saved is not None:
+        verification = saved["verification"]
     elif offline:
         verification = {"success": sim_ok, "observation": "（オフライン）シミュレータ座標で判定"}
     else:
@@ -172,10 +181,12 @@ def run_scenario(idx: int, instruction: str, writer, offline: bool, speed: float
     print(f"[scenario {idx}] sim success={sim_ok}  VLM: {verification}")
 
     card(writer, f"シナリオ {idx} 結果",
-         [f"{i+1}. {r['cube']} → {r['pad']}: {'成功' if r['success'] else '失敗'}（位置誤差 {r['xy_error_m']*100:.1f} cm）"
-          for i, r in enumerate(results)]
-         + [f"VLM検証（最終画像を{label}が判定）: {'合格' if verification['success'] else '不合格'}",
-            f"VLMの所見: {verification['observation']}"], 7)
+         ["定量判定（シミュレータ座標）:"]
+         + [f"  {i+1}. {r['cube']} → {r['pad']}: {'成功' if r['success'] else '失敗'}（位置誤差 {r['xy_error_m']*100:.1f} cm）"
+            for i, r in enumerate(results)]
+         + [f"視覚検査（VLM、最終画像のみで判定）: {'合格' if verification['success'] else '不合格'}",
+            f"  所見: {verification['observation']}",
+            f"2経路の判定は{'一致' if sim_ok == bool(verification['success']) else '不一致'}。"], 7)
 
     return {"scenario": idx, "instruction": instruction, "plan": plan, "plan_seconds": round(plan_sec, 2),
             "results": results, "sim_success": sim_ok, "verification": verification,
@@ -188,26 +199,37 @@ def main() -> None:
     ap.add_argument("--offline", action="store_true", help="keyword planner instead of the OpenAI API")
     ap.add_argument("--video", default="out/demo.mp4")
     ap.add_argument("--speed", type=float, default=1.0, help=">1 slows robot motions")
+    ap.add_argument("--replay", metavar="LOG", help="re-render from a saved demo_log.json (no API calls)")
     args = ap.parse_args()
 
     out_dir = (HERE / args.video).parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    instructions = args.instruction or DEFAULT_INSTRUCTIONS
+    saved_logs = json.loads(pathlib.Path(args.replay).read_text()) if args.replay else None
+    instructions = args.instruction or ([l["instruction"] for l in saved_logs] if saved_logs else DEFAULT_INSTRUCTIONS)
     wall = time.time()
     writer = imageio.get_writer(str(HERE / args.video), fps=FPS, codec="libx264", quality=8, macro_block_size=1)
-    card(writer, "言語指示で動くピック＆プレース",
-         ["LLMプランナー × MuJoCo（Franka Panda）× VLM検証",
-          "1. 日本語の指示文 → LLMが作業計画（JSON）を生成",
-          "2. 逆運動学（DLS-IK）で7軸アームを制御し、物理シミュレーションで把持・搬送",
-          "3. 完了後のカメラ画像をVLMが検査し、指示を満たしたか判定",
+    card(writer, "言語指示ピック＆プレース：座標と画像の二重判定",
+         ["MuJoCo（Franka Panda）／ AIは推論のみ（学習なし）",
+          "1. 日本語の指示文 → 作業計画（JSON）を生成",
+          "2. 逆運動学（DLS-IK）で7軸アームを制御し、補助なしの物理接触で把持・搬送",
+          "3. 完了後、座標による定量判定と、カメラ画像のみを見る視覚検査（VLM）の2経路で合否を判定",
           "動画は等速（1x）です。"], 6)
-    logs = [run_scenario(i + 1, text, writer, args.offline, args.speed, out_dir) for i, text in enumerate(instructions)]
+    logs = [run_scenario(i + 1, text, writer, args.offline, args.speed, out_dir,
+                         saved_logs[i] if saved_logs and i < len(saved_logs) else None)
+            for i, text in enumerate(instructions)]
     n_ok = sum(l["sim_success"] and l["verification"]["success"] for l in logs)
-    card(writer, "まとめ", [f"{len(logs)} シナリオ中 {n_ok} シナリオで計画・実行・検証がすべて成功",
-                          "学習なし・推論のみ。シーン情報は物体名と座標のみをテキストで与え、把握は物理接触で実現。",
-                          "コードとレポートはGitHubリポジトリを参照。"], 5)
+    summary = [f"{len(logs)} シナリオ中 {n_ok} シナリオで計画・実行が成功し、定量判定と視覚検査の結果が一致",
+               "学習なし・推論のみ。シーン情報は物体名と座標のみをテキストで与え、把持は物理接触で実現。"]
+    ev_path = out_dir / "eval_grasp.json"
+    if ev_path.exists():
+        ev = json.loads(ev_path.read_text())["summary"]
+        summary.append(f"別途、初期位置・割当・実行順をランダム化した {ev['trials']} 試行で把持 "
+                       f"{ev['successes']}/{ev['grasps']} 成功、xy誤差 平均 {ev['xy_error_cm']['mean']:.2f} cm（レポート参照）。")
+    summary.append("コードとレポートはGitHubリポジトリを参照。")
+    card(writer, "まとめ", summary, 5)
     writer.close()
-    (out_dir / "demo_log.json").write_text(json.dumps(logs, ensure_ascii=False, indent=2))
+    if not args.replay:
+        (out_dir / "demo_log.json").write_text(json.dumps(logs, ensure_ascii=False, indent=2))
     print(json.dumps({"video": args.video, "wall_seconds": round(time.time() - wall, 1),
                       "scenarios_ok": n_ok, "total": len(logs)}, ensure_ascii=False))
 
