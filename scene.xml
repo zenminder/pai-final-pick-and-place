@@ -1,0 +1,58 @@
+<mujoco model="panda pick and place">
+  <!-- Stock Franka Panda from MuJoCo Menagerie (unchanged). -->
+  <include file="assets/franka_emika_panda/panda.xml"/>
+  <compiler meshdir="assets/franka_emika_panda/assets"/>
+
+  <option timestep="0.002" integrator="implicitfast"/>
+
+  <visual>
+    <global offwidth="1280" offheight="720" azimuth="120" elevation="-20"/>
+    <headlight diffuse="0.35 0.35 0.35" ambient="0.25 0.25 0.25" specular="0.05 0.05 0.05"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <quality shadowsize="4096"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.35 0.55 0.75" rgb2="0.05 0.05 0.1" width="512" height="3072"/>
+    <texture type="2d" name="floor_tex" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="floor_mat" texture="floor_tex" texuniform="true" texrepeat="5 5" reflectance="0.1"/>
+    <material name="table_mat" rgba="0.42 0.38 0.34 1" reflectance="0"/>
+    <material name="c_red" rgba="0.90 0.15 0.15 1"/>
+    <material name="c_green" rgba="0.15 0.70 0.20 1"/>
+    <material name="c_blue" rgba="0.15 0.30 0.90 1"/>
+    <material name="c_yellow" rgba="0.95 0.85 0.10 1"/>
+    <material name="c_white" rgba="0.95 0.95 0.95 1"/>
+  </asset>
+
+  <default>
+    <default class="cube">
+      <geom type="box" size="0.02 0.02 0.02" mass="0.05" condim="4" friction="2 0.01 0.001"
+        solref="0.01 1" solimp="0.95 0.99 0.001"/>
+    </default>
+    <default class="pad">
+      <geom type="box" size="0.06 0.045 0.005" contype="1" conaffinity="1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <light pos="0.8 -0.6 2.0" dir="-0.3 0.3 -1" directional="true" diffuse="0.45 0.45 0.45" specular="0.1 0.1 0.1" castshadow="true"/>
+    <light pos="-0.5 0.8 1.5" dir="0.4 -0.5 -1" directional="false" diffuse="0.2 0.2 0.2" castshadow="false"/>
+    <geom name="floor" pos="0 0 -0.75" size="0 0 0.05" type="plane" material="floor_mat"/>
+    <geom name="table" type="box" pos="0.35 0 -0.01" size="0.65 0.65 0.01" material="table_mat"/>
+    <geom name="table_leg" type="box" pos="0.35 0 -0.38" size="0.1 0.1 0.37" rgba="0.3 0.3 0.3 1"/>
+
+    <body name="pad_A" pos="0.62 0.17 0.005"><geom class="pad" name="pad_A_geom" material="c_yellow"/></body>
+    <body name="pad_B" pos="0.62 -0.17 0.005"><geom class="pad" name="pad_B_geom" material="c_white"/></body>
+
+    <body name="cube_red" pos="0.42 0.22 0.02"><freejoint name="cube_red_j"/><geom class="cube" name="cube_red_geom" material="c_red"/></body>
+    <body name="cube_green" pos="0.46 0.0 0.02"><freejoint name="cube_green_j"/><geom class="cube" name="cube_green_geom" material="c_green"/></body>
+    <body name="cube_blue" pos="0.42 -0.22 0.02"><freejoint name="cube_blue_j"/><geom class="cube" name="cube_blue_geom" material="c_blue"/></body>
+
+    <body name="focus" pos="0.42 0 0.12"/>
+    <camera name="overview" mode="targetbody" target="focus" pos="1.55 -1.25 0.85" fovy="42"/>
+    <camera name="side" mode="targetbody" target="focus" pos="0.6 1.6 0.7" fovy="45"/>
+    <camera name="top" pos="0.62 0 1.2" xyaxes="0 1 0 -1 0 0" fovy="45"/>
+    <camera name="front" mode="targetbody" target="focus" pos="1.45 0 0.75" fovy="40"/>
+  </worldbody>
+</mujoco>
