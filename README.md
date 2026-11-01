@@ -4,7 +4,7 @@ Physical AI応用1講座 最終課題（omnicampus: zenminder）
 
 自然言語（日本語）の指示でロボットにピック＆プレースをさせるシステムを MuJoCo 上の Franka Panda で構築し、**「デモが1回成功した」で終わらせず、動作がどれだけ再現するか・結果の合否をどう信頼できる形で判定できるか**を評価したリポジトリです。把持は補助（ウェルド等）を使わない物理接触のみ。AIの利用は**推論のみ（学習なし）**で、計画生成（LLM）と画像による結果検査（VLM）に用いています。ROS/Gazebo は使わず、pip で入るライブラリだけで macOS（Apple Silicon）・GPUなし・ヘッドレスで再現できます。
 
-- デモ動画（等速・倍速なし）: （提出後に追記）
+- デモ動画（等速・倍速なし）: https://youtu.be/LlUflrkpe7I
 - 使用ツール: MuJoCo 3.x / MuJoCo Menagerie (Franka Panda) / OpenAI Python SDK / imageio-ffmpeg / Pillow
 
 ## 評価の問いと主な結果
