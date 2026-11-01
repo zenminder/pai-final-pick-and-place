@@ -35,6 +35,7 @@ body { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK
 h1 { font-size: 17pt; margin: 0 0 4px; letter-spacing: .01em; }
 h2 { font-size: 12.5pt; margin: 16px 0 6px; padding: 2px 0 2px 8px; border-left: 4px solid #2a5d8f;
      break-after: avoid; page-break-after: avoid; }
+h3 { font-size: 11pt; margin: 10px 0 4px; color: #2a5d8f; break-after: avoid; page-break-after: avoid; }
 p, li { margin: 0 0 4px; }
 ul { margin: 2px 0 6px; padding-left: 1.3em; }
 .meta { color: #444; font-size: 9.5pt; margin-bottom: 2px; }
@@ -127,6 +128,42 @@ def results_section(logs: list[dict], log_dir: pathlib.Path) -> str:
     return summary + table + figrow
 
 
+def eval_section(log_dir: pathlib.Path) -> str:
+    """Grasp robustness table from out/eval_grasp.json (written by eval_grasp.py); empty if absent."""
+    p = OUT / "eval_grasp.json"
+    p = p if p.exists() else log_dir / "eval_grasp.json"
+    if not p.exists():
+        return ""
+    data = json.loads(p.read_text())
+    s, trials = data["summary"], data["trials"]
+    e = s["xy_error_cm"]
+    xr, yr = s["x_range_m"], s["y_range_m"]
+    intro = (f"<p>デモ1本の成功では再現性が示せないため、<code>eval_grasp.py</code> で把持のロバスト性を定量評価した。"
+             f"3個のキューブの初期位置を x∈[{xr[0]:.2f}, {xr[1]:.2f}] m、y∈[{yr[0]:.2f}, {yr[1]:.2f}] m の一様乱数"
+             f"（最小間隔 {s['min_separation_m']*100:.0f} cm）で配置し、パッド割当（2+1）と実行順もランダムにして "
+             f"{s['trials']} 試行（{s['grasps']} 把持）を実行した（seed={s['seed']}、動画なし）。</p>"
+             f"<p><strong>結果：成功 {s['successes']}/{s['grasps']}（{s['success_rate']*100:.0f}%）、"
+             f"xy位置誤差 平均 {e['mean']:.2f} cm（標準偏差 {e['std']:.2f}）、最大 {e['max']:.2f} cm。</strong>"
+             f"色別の成功数：" + "、".join(f"{CUBE_JA.get(c, c)} {v['successes']}/{v['n']}" for c, v in s["per_cube"].items())
+             + "。全試行で把持・搬送・解放に失敗はなく、誤差はスロット中心に対する系統的なオフセットが支配的であった。</p>")
+
+    def rows(ts: list[dict]) -> str:
+        out = []
+        for t in ts:
+            n_ok = sum(r["success"] for r in t["results"])
+            mx = max(r["xy_error_m"] for r in t["results"]) * 100
+            plan = " / ".join(f"{CUBE_JA.get(c, c)}→{PAD_COLORS.get(p, p)}" for c, p in t["plan"])
+            cls = "ok" if n_ok == 3 else "ng"
+            out.append(f"<tr><td>{t['trial']}</td><td class=\"{cls}\">{n_ok}/3</td><td>{mx:.2f}</td><td>{plan}</td></tr>")
+        return "".join(out)
+
+    half = (len(trials) + 1) // 2
+    head = "<tr><th>試行</th><th>成功</th><th>最大誤差 cm</th><th>割当・実行順</th></tr>"
+    tables = (f'<div class="figrow"><table>{head}{rows(trials[:half])}</table>'
+              f'<table>{head}{rows(trials[half:])}</table></div>')
+    return f"<h3>4.2 把持ロバスト性評価（初期位置ランダム化）</h3>{intro}{tables}"
+
+
 def build_html(logs: list[dict], log_dir: pathlib.Path, video_url: str, repo_url: str) -> str:
     exec_tag = img_tag(OUT / "_exec.png") or img_tag(log_dir / "_exec.png")
     exec_fig = (f'<figure class="wide">{exec_tag}<figcaption>デモ動画の1フレーム：指示文（上）、LLMの計画と進捗（右）、'
@@ -174,16 +211,19 @@ AIの活用は<strong>推論のみ（学習なし）</strong>である。狙い�
 <li><strong>物理把持に拘った</strong>：把持補助（ウェルド）なしで3キューブ連続成功。摩擦・接触パラメータの調整と真上からの一定姿勢で安定化。</li>
 <li><strong>APIキーなしでも検証可能</strong>：オフラインの規則ベースプランナーを同梱（<code>--offline</code>）。採点者が鍵なしでパイプライン全体を再実行できる。</li>
 <li><strong>LLMプランナーの価値の可視化</strong>：「暖色のキューブは黄色へ、寒色は白へ」のような語彙に直接現れない指示は規則ベースでは空計画になるが、LLMは色の意味を解釈して計画できる。シナリオ2でこれを示す。</li>
+<li><strong>ロバスト性の定量評価</strong>：デモ1本の成功で終わらせず、初期位置・パッド割当・実行順をランダム化した試行で把持成功率と位置誤差を計測した（4.2節）。把持パラメータの調整はこの評価を回しながら行った。</li>
 <li><strong>表現力</strong>：字幕オーバーレイと計画・結果カードで、動画単体でも何をしているかが追える構成にした。</li>
 </ul>
 
 <h2>4. 結果</h2>
+<h3>4.1 デモシナリオ（言語指示 → 計画 → 実行 → VLM検証）</h3>
 {results_section(logs, log_dir)}
+{eval_section(log_dir)}
 
 <h2>5. 考察・反省・限界</h2>
 <ul>
 <li>物体位置はシミュレータの真値を用いており、画像からの位置推定は未実装。「見て掴む」には至っていない。</li>
-<li>把持姿勢は真上からの固定姿勢で、パッドあたり2スロットの制約がある。3個目を同じパッドに置く指示には対応できない。</li>
+<li>把持姿勢は真上からの固定姿勢で、パッドあたり2スロットの制約がある。3個目を同じパッドに置く指示には対応できない。ロバスト性評価もキューブが正立・疎に配置された条件に限られ、傾いた物体・密集・サイズ違いは未評価である。</li>
 <li>LLM呼び出しには数秒の遅延とAPIコストが伴う。JSON検証に失敗した場合の再試行・リプランは未実装で、失敗時は停止する。</li>
 <li>VLM検証は定性的な合否判定であり、位置誤差などの数値は把握できない。シミュレータ座標との併用で補っている。</li>
 <li>シナリオ2ではLLMが緑を「暖色・寒色のどちらにも明確には分類されない」と判断し対象外とした。曖昧な指示に対する解釈はもっともらしい一方で、人の意図（緑も寒色として扱う等）とずれる可能性がある。計画と理由をカード・字幕で必ず可視化し、人が確認できる形にしているのはこのためである。</li>

@@ -38,6 +38,7 @@ export OPENAI_API_KEY=...   # LLM/VLM を使う場合のみ。リポジトリに
 .venv/bin/python run_demo.py --offline                        # APIなし: キーワード規則プランナーで同じパイプラインを実行
 .venv/bin/python run_demo.py --instruction "青いキューブを白いパッドへ"   # 任意の指示（複数指定可）
 .venv/bin/python pick_place.py --plan "red:pad_A,green:pad_B,blue:pad_A" --video out/test.mp4   # 計画を直接与えて実行
+.venv/bin/python eval_grasp.py --trials 30 --seed 0                                          # 把持ロバスト性評価（初期位置ランダム化、動画なし）→ out/eval_grasp.json
 .venv/bin/python make_report.py --video-url <YouTube URL> --repo-url <GitHub URL>              # レポートPDFを生成 → out/説明資料_PAI最終課題_zenminder.pdf
 ```
 
@@ -51,7 +52,8 @@ export OPENAI_API_KEY=...   # LLM/VLM を使う場合のみ。リポジトリに
 | `pick_place.py` | `PandaSim`: 物理ステップ、DLS逆運動学、動作プリミティブ、フレーム録画 |
 | `ai_planner.py` | LLMプランナー `plan()`、VLM検証 `verify()`、オフライン規則プランナー |
 | `run_demo.py` | 指示 → 計画 → 実行 → 検証 → 字幕付きMP4 を一気通貫で生成 |
-| `make_report.py` | `out/demo_log.json` からレポートPDFを生成（headless Chrome） |
+| `eval_grasp.py` | 初期位置・割当をランダム化したN試行で把持成功率と位置誤差を計測 |
+| `make_report.py` | `out/demo_log.json` と `out/eval_grasp.json` からレポートPDFを生成（headless Chrome） |
 | `assets/franka_emika_panda/` | MuJoCo Menagerie の Franka Panda モデル（ライセンス同梱） |
 | `out/` | 生成物（動画・画像・ログ・PDF）。git 管理外 |
 
